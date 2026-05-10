@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Loader App</title>
+  <meta name="description" content="A simple GitHub Pages app that shows a loading video before opening a PDF." />
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --panel: rgba(255, 255, 255, 0.06);
+      --panel-strong: rgba(255, 255, 255, 0.12);
+      --text: #f4f7fb;
+      --muted: rgba(244, 247, 251, 0.72);
+      --accent: #7c9cff;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      --radius: 24px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .loader {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top, rgba(124,156,255,0.18), transparent 50%),
+        linear-gradient(180deg, #0b0f17 0%, #06080d 100%);
+      transition: opacity 420ms ease, visibility 420ms ease;
+      z-index: 20;
+    }
+
+    .loader.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .loader-card {
+      width: min(900px, 100%);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #000;
+    }
+
+    .loader-overlay {
+      position: absolute;
+      inset: auto 0 0 0;
+      padding: 18px 20px;
+      background: linear-gradient(180deg, transparent, rgba(0,0,0,0.72));
+    }
+
+    .loader-title {
+      margin: 0 0 6px;
+      font-size: clamp(24px, 3vw, 40px);
+      letter-spacing: 0.2px;
+    }
+
+    .loader-text {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 60ch;
+    }
+
+    .loader-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 16px 20px 20px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--panel-strong);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 18px rgba(124,156,255,0.85);
+    }
+
+    .app {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 420ms ease, visibility 420ms ease;
+      background: #111722;
+    }
+
+    .app.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      background: rgba(10, 14, 22, 0.9);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .brand strong {
+      font-size: 15px;
+      letter-spacing: 0.2px;
+    }
+
+    .brand span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      color: var(--text);
+      background: var(--panel-strong);
+      text-decoration: none;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .btn:hover { filter: brightness(1.08); }
+
+    .viewer {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #e8ebf2;
+    }
+
+    .fallback {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      text-align: center;
+      padding: 24px;
+      background: linear-gradient(180deg, #0b0f17 0%, #06080d 100%);
+      z-index: 30;
+    }
+
+    .fallback.show {
+      display: grid;
+    }
+
+    .fallback-card {
+      max-width: 640px;
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .fallback-card h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+    }
+
+    .fallback-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <section id="loader" class="loader" aria-label="Loading screen">
+    <div class="loader-card">
+      <div class="video-wrap">
+        <video id="loadingVideo" autoplay muted playsinline preload="auto"></video>
+        <div class="loader-overlay">
+          <h1 class="loader-title">Loading your document</h1>
+          <p class="loader-text">The PDF will open automatically after the loading video finishes.</p>
+        </div>
+      </div>
+      <div class="loader-footer">
+        <div class="pill"><span class="dot"></span><span id="statusText">Preparing content...</span></div>
+        <div class="pill" id="fileHint">PDF ready</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="app" class="app" aria-label="PDF viewer">
+    <div class="topbar">
+      <div class="brand">
+        <strong id="pdfTitle">Document Viewer</strong>
+        <span id="pdfSubtitle">Opened after the loading screen</span>
+      </div>
+      <div class="actions">
+        <a id="openNewTab" class="btn" href="#" target="_blank" rel="noopener">Open PDF</a>
+        <button id="restartBtn" class="btn" type="button">Replay loading</button>
+      </div>
+    </div>
+    <iframe id="pdfFrame" class="viewer" title="PDF document"></iframe>
+  </section>
+
+  <section id="fallback" class="fallback" aria-label="Fallback message">
+    <div class="fallback-card">
+      <h1>Something did not load correctly</h1>
+      <p>Make sure the loading video and PDF are in the correct paths, then refresh the page. The default setup expects <strong>assets/loading.mp4</strong> and <strong>assets/document.pdf</strong>.</p>
+    </div>
+  </section>
+
+  <script>
+    const DEFAULT_VIDEO = 'assets/loading.mp4';
+    const DEFAULT_PDF = 'assets/document.pdf';
+    const MIN_LOAD_TIME = 1500;
+    const MAX_WAIT_TIME = 15000;
+
+    const params = new URLSearchParams(window.location.search);
+    const videoSrc = params.get('video') || DEFAULT_VIDEO;
+    const pdfSrc = params.get('pdf') || DEFAULT_PDF;
+    const title = params.get('title') || 'Document Viewer';
+
+    const loader = document.getElementById('loader');
+    const app = document.getElementById('app');
+    const fallback = document.getElementById('fallback');
+    const video = document.getElementById('loadingVideo');
+    const frame = document.getElementById('pdfFrame');
+    const statusText = document.getElementById('statusText');
+    const fileHint = document.getElementById('fileHint');
+    const pdfTitle = document.getElementById('pdfTitle');
+    const pdfSubtitle = document.getElementById('pdfSubtitle');
+    const openNewTab = document.getElementById('openNewTab');
+    const restartBtn = document.getElementById('restartBtn');
+
+    let startTime = Date.now();
+    let completed = false;
+    let safetyTimer = null;
+
+    function showFallback() {
+      loader.classList.add('hidden');
+      app.classList.remove('visible');
+      fallback.classList.add('show');
+    }
+
+    function showApp() {
+      if (completed) return;
+      completed = true;
+      clearTimeout(safetyTimer);
+      loader.classList.add('hidden');
+      fallback.classList.remove('show');
+      app.classList.add('visible');
+      frame.src = pdfSrc;
+      openNewTab.href = pdfSrc;
+      pdfTitle.textContent = title;
+      pdfSubtitle.textContent = pdfSrc;
+    }
+
+    function finishWhenReady() {
+      const elapsed = Date.now() - startTime;
+      const wait = Math.max(0, MIN_LOAD_TIME - elapsed);
+      window.setTimeout(showApp, wait);
+    }
+
+    function boot() {
+      startTime = Date.now();
+      statusText.textContent = 'Loading video...';
+      fileHint.textContent = videoSrc;
+      pdfTitle.textContent = title;
+      pdfSubtitle.textContent = 'Loading PDF...';
+      frame.removeAttribute('src');
+      app.classList.remove('visible');
+      loader.classList.remove('hidden');
+      fallback.classList.remove('show');
+      completed = false;
+
+      clearTimeout(safetyTimer);
+
+      video.onloadeddata = () => {
+        statusText.textContent = 'Playing loading screen...';
+      };
+
+      video.onended = finishWhenReady;
+      video.onerror = () => {
+        statusText.textContent = 'Video unavailable, opening PDF...';
+        finishWhenReady();
+      };
+
+      video.src = videoSrc;
+      video.load();
+
+      video.play().catch(() => {
+        statusText.textContent = 'Autoplay blocked, continuing...';
+        finishWhenReady();
+      });
+
+      safetyTimer = window.setTimeout(() => {
+        if (!completed) showFallback();
+      }, MAX_WAIT_TIME);
+
+      restartBtn.onclick = () => {
+        video.pause();
+        video.currentTime = 0;
+        boot();
+      };
+    }
+
+    boot();
+  </script>
+</body>
+</html>
